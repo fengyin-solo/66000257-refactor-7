@@ -1,7 +1,11 @@
 import type { CanFrame, DbcMessage, DbcSignal } from '../types';
+import { decodeBytes, parseHex } from '../../../shared/signal-codec';
+import { generateDefaultDbc } from '../../../shared/catalog';
 
 /**
- * Parse DBC text content and extract messages and signals
+ * 解析用户提供的 DBC 文本，提取消息与信号定义。
+ * 默认 DBC（含量程/单位/位布局等全部信号知识）由 shared/catalog 从
+ * 唯一定义 shared/signals.json 生成，不再在前端各写一份。
  */
 export function parseDbc(text: string): Map<number, DbcMessage> {
   const messages = new Map<number, DbcMessage>();
@@ -55,81 +59,18 @@ export function parseDbc(text: string): Map<number, DbcMessage> {
 }
 
 /**
- * Extract a signal value from raw CAN data bytes
- */
-function extractSignalValue(dataBytes: number[], signal: DbcSignal): number {
-  // Convert data bytes to a bit array (LSB first within each byte)
-  const bits: number[] = [];
-  for (const byte of dataBytes) {
-    for (let bit = 0; bit < 8; bit++) {
-      bits.push((byte >> bit) & 1);
-    }
-  }
-
-  // Extract bits for this signal (Intel byte order / little-endian)
-  let rawValue = 0;
-  for (let i = 0; i < signal.bitLength; i++) {
-    const bitIndex = signal.startBit + i;
-    if (bitIndex < bits.length) {
-      rawValue |= bits[bitIndex] << i;
-    }
-  }
-
-  return rawValue * signal.factor + signal.offset;
-}
-
-/**
- * Decode a CAN frame using DBC message definitions
+ * Decode a CAN frame using DBC message definitions.
+ * 位提取与 factor/offset 换算直接走前后端共用的 signal-codec，
+ * 页面本地不再维护第二套解析实现。
  */
 export function decodeCanFrame(
   frame: CanFrame,
   message: DbcMessage
 ): Record<string, number> {
-  const decoded: Record<string, number> = {};
-
-  // Parse hex data string into byte array
-  const hexStr = frame.data.replace(/\s/g, '');
-  const dataBytes: number[] = [];
-  for (let i = 0; i < hexStr.length; i += 2) {
-    dataBytes.push(parseInt(hexStr.substring(i, i + 2), 16));
-  }
-
-  for (const signal of message.signals) {
-    decoded[signal.name] = extractSignalValue(dataBytes, signal);
-  }
-
-  return decoded;
+  return decodeBytes(parseHex(frame.data), message.signals);
 }
 
 /**
- * Default mock DBC content for OBD-II standard PIDs
+ * Default mock DBC content generated from the single shared signal catalog.
  */
-export const DEFAULT_DBC_CONTENT = `VERSION ""
-
-NS_ :
-
-BS_:
-
-BU_: ECU Dashboard
-
-BO_ 2015 OBD_Request: 8 ECU
- SG_ EngineRPM : 0|16@1+ (0.25,0) [0|16383.75] "rpm" Dashboard
- SG_ VehicleSpeed : 16|8@1+ (1,0) [0|255] "km/h" Dashboard
- SG_ CoolantTemp : 24|8@1+ (1,-40) [-40|215] "degC" Dashboard
- SG_ ThrottlePosition : 32|8@1+ (0.392,0) [0|100] "%" Dashboard
- SG_ EngineLoad : 40|8@1+ (0.392,0) [0|100] "%" Dashboard
-
-BO_ 2024 OBD_Response_Engine: 8 ECU
- SG_ EngineRPM : 0|16@1+ (0.25,0) [0|16383.75] "rpm" Dashboard
- SG_ VehicleSpeed : 16|8@1+ (1,0) [0|255] "km/h" Dashboard
- SG_ CoolantTemp : 24|8@1+ (1,-40) [-40|215] "degC" Dashboard
- SG_ ThrottlePosition : 32|8@1+ (0.392,0) [0|100] "%" Dashboard
- SG_ EngineLoad : 40|8@1+ (0.392,0) [0|100] "%" Dashboard
-
-BO_ 2025 OBD_Response_Transmission: 8 ECU
- SG_ EngineRPM : 0|16@1+ (0.25,0) [0|16383.75] "rpm" Dashboard
- SG_ VehicleSpeed : 16|8@1+ (1,0) [0|255] "km/h" Dashboard
- SG_ CoolantTemp : 24|8@1+ (1,-40) [-40|215] "degC" Dashboard
- SG_ ThrottlePosition : 32|8@1+ (0.392,0) [0|100] "%" Dashboard
- SG_ EngineLoad : 40|8@1+ (0.392,0) [0|100] "%" Dashboard
-`;
+export const DEFAULT_DBC_CONTENT = generateDefaultDbc();

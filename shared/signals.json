@@ -1,0 +1,81 @@
+{
+  "frameLength": 8,
+  "rxProbability": 0.7,
+  "signals": [
+    {
+      "name": "EngineRPM",
+      "startBit": 0,
+      "bitLength": 16,
+      "factor": 0.25,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 16383.75,
+      "unit": "rpm",
+      "displayUnit": "rpm",
+      "color": "#3b82f6",
+      "chartColor": "#06b6d4",
+      "mock": { "min": 800, "max": 6000, "integer": true }
+    },
+    {
+      "name": "VehicleSpeed",
+      "startBit": 16,
+      "bitLength": 8,
+      "factor": 1,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 255,
+      "unit": "km/h",
+      "displayUnit": "km/h",
+      "color": "#22c55e",
+      "chartColor": "#22c55e",
+      "mock": { "min": 0, "max": 120, "integer": true }
+    },
+    {
+      "name": "CoolantTemp",
+      "startBit": 24,
+      "bitLength": 8,
+      "factor": 1,
+      "offset": -40,
+      "minValue": -40,
+      "maxValue": 215,
+      "unit": "degC",
+      "displayUnit": "°C",
+      "color": "#ef4444",
+      "chartColor": "#ef4444",
+      "mock": { "min": 70, "max": 105, "integer": true }
+    },
+    {
+      "name": "ThrottlePosition",
+      "startBit": 32,
+      "bitLength": 8,
+      "factor": 0.392,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 100,
+      "unit": "%",
+      "displayUnit": "%",
+      "color": "#eab308",
+      "chartColor": "#eab308",
+      "mock": { "min": 0, "max": 100, "integer": true }
+    },
+    {
+      "name": "EngineLoad",
+      "startBit": 40,
+      "bitLength": 8,
+      "factor": 0.392,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 100,
+      "unit": "%",
+      "displayUnit": "%",
+      "color": "#a855f7",
+      "chartColor": "#a855f7",
+      "mock": { "min": 0, "max": 100, "integer": true }
+    }
+  ],
+  "messages": [
+    { "id": 2015, "name": "OBD_Request", "dlc": 8, "sender": "ECU", "signalNames": ["EngineRPM", "VehicleSpeed", "CoolantTemp", "ThrottlePosition", "EngineLoad"] },
+    { "id": 2024, "name": "OBD_Response_Engine", "dlc": 8, "sender": "ECU", "signalNames": ["EngineRPM", "VehicleSpeed", "CoolantTemp", "ThrottlePosition", "EngineLoad"] },
+    { "id": 2025, "name": "OBD_Response_Transmission", "dlc": 8, "sender": "ECU", "signalNames": ["EngineRPM", "VehicleSpeed", "CoolantTemp", "ThrottlePosition", "EngineLoad"] }
+  ]
+}

@@ -1,6 +1,9 @@
 package com.canbus.service;
 
 import com.canbus.model.CanFrame;
+import com.canbus.signal.MessageDef;
+import com.canbus.signal.SignalCodec;
+import com.canbus.signal.SignalDefs;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -8,12 +11,20 @@ import java.util.*;
 @Service
 public class CanService {
 
-    private static final int[] MESSAGE_IDS = {0x7DF, 0x7E8, 0x7E9, 0x7EA, 0x7EB};
+    private final SignalDefs signalDefs;
+    private final SignalCodec signalCodec;
     private final Random random = new Random();
     private int frameCounter = 0;
 
+    public CanService(SignalDefs signalDefs, SignalCodec signalCodec) {
+        this.signalDefs = signalDefs;
+        this.signalCodec = signalCodec;
+    }
+
     /**
-     * Generate 20 mock OBD-II CAN frames with realistic values
+     * Generate 20 mock OBD-II CAN frames with realistic values.
+     * 报文 ID、信号物理值、字节编码与解码读数全部来自前后端共用的
+     * 唯一定义 shared/signals.json，本类不再自行写第二遍。
      */
     public List<CanFrame> generateMockFrames() {
         List<CanFrame> frames = new ArrayList<>();
@@ -24,47 +35,25 @@ public class CanService {
     }
 
     private CanFrame generateSingleFrame() {
-        int arbId = MESSAGE_IDS[random.nextInt(MESSAGE_IDS.length)];
+        MessageDef message = signalCodec.pickMessage(random);
+        SignalCodec.MockPayload payload = signalCodec.generateMockPayload(message, random);
 
-        double rpm = 800 + random.nextDouble() * 5200;
-        double speed = random.nextDouble() * 120;
-        double temp = 70 + random.nextDouble() * 35;
-        double throttle = random.nextDouble() * 100;
-        double load = random.nextDouble() * 100;
-
-        int rpmRaw = (int) Math.round(rpm / 0.25);
-        int rpmLow = rpmRaw & 0xFF;
-        int rpmHigh = (rpmRaw >> 8) & 0xFF;
-        int speedByte = ((int) speed) & 0xFF;
-        int tempByte = ((int) temp + 40) & 0xFF;
-        int throttleByte = ((int) Math.round(throttle / 0.392)) & 0xFF;
-        int loadByte = ((int) Math.round(load / 0.392)) & 0xFF;
-
-        String data = String.format("%02X %02X %02X %02X %02X %02X 00 00",
-                rpmLow, rpmHigh, speedByte, tempByte, throttleByte, loadByte);
-
-        Map<String, Double> decoded = new LinkedHashMap<>();
-        decoded.put("EngineRPM", Math.round(rpm * 100.0) / 100.0);
-        decoded.put("VehicleSpeed", Math.round(speed * 100.0) / 100.0);
-        decoded.put("CoolantTemp", Math.round(temp * 100.0) / 100.0);
-        decoded.put("ThrottlePosition", Math.round(throttle * 100.0) / 100.0);
-        decoded.put("EngineLoad", Math.round(load * 100.0) / 100.0);
-
-        String direction = random.nextDouble() > 0.3 ? "RX" : "TX";
+        double rxProbability = signalDefs.catalog().rxProbability();
+        String direction = random.nextDouble() < rxProbability ? "RX" : "TX";
 
         return new CanFrame(
                 "frame-" + (++frameCounter),
                 System.currentTimeMillis(),
-                arbId,
-                8,
-                data,
-                decoded,
+                message.id(),
+                signalDefs.catalog().frameLength(),
+                payload.data(),
+                payload.decoded(),
                 direction
         );
     }
 
     /**
-     * Parse DBC text and return message definitions
+     * Parse DBC text and return message definitions.
      */
     public Map<String, Object> parseDbc(String text) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -110,9 +99,16 @@ public class CanService {
     }
 
     /**
-     * Decode a frame using signal definitions (simplified)
+     * Decode a frame using the shared signal definitions.
+     * 位提取与 factor/offset 换算与前端 signal-codec.ts 是同一套算法；
+     * 未知报文沿用帧内既有的 decoded 读数，接口返回结构不变。
      */
     public Map<String, Double> decodeFrame(CanFrame frame) {
+        Optional<MessageDef> message = signalDefs.findMessage(frame.getArbitrationId());
+        if (message.isPresent()) {
+            int[] bytes = signalCodec.parseHex(frame.getData());
+            return signalCodec.decodeForApi(bytes, message.get());
+        }
         return frame.getDecoded() != null ? frame.getDecoded() : new LinkedHashMap<>();
     }
 

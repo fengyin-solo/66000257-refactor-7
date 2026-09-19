@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { CanFrame, DbcMessage, BusStats } from '../types';
 import { parseDbc, decodeCanFrame, DEFAULT_DBC_CONTENT } from '../utils/dbc-parser';
+import { catalog, getMessage } from '../../../shared/catalog';
+import { generateMockPayload } from '../../../shared/signal-codec';
 
 let frameIdCounter = 0;
 
@@ -107,51 +109,32 @@ export const useCanBusStore = defineStore('canbus', () => {
   }
 
   function generateMockFrame(): CanFrame {
-    const messageIds = Array.from(dbcMessages.value.keys());
-    const arbId = messageIds.length > 0
-      ? messageIds[Math.floor(Math.random() * messageIds.length)]
-      : 0x7DF;
+    // 报文 ID、各信号模拟物理值、字节编码与解码全部来自唯一定义，
+    // 与后端 CanService 使用同一份 shared/signals.json。
+    const knownIds = new Set(catalog.messages.map(message => message.id));
+    const definedIds = Array.from(dbcMessages.value.keys()).filter(id => knownIds.has(id));
+    let arbitrationId: number;
+    if (definedIds.length > 0) {
+      arbitrationId = definedIds[Math.floor(Math.random() * definedIds.length)];
+    } else if (dbcMessages.value.size > 0) {
+      const customIds = Array.from(dbcMessages.value.keys());
+      arbitrationId = customIds[Math.floor(Math.random() * customIds.length)];
+    } else {
+      arbitrationId = 0x7DF;
+    }
 
-    const msgDef = dbcMessages.value.get(arbId);
-
-    // Generate realistic OBD-II values
-    const rpm = Math.floor(800 + Math.random() * 5200);
-    const speed = Math.floor(Math.random() * 120);
-    const temp = Math.floor(70 + Math.random() * 35);
-    const throttle = Math.floor(Math.random() * 100);
-    const load = Math.floor(Math.random() * 100);
-
-    // Encode values into bytes (simplified encoding for display)
-    const rpmRaw = Math.round(rpm / 0.25);
-    const rpmLow = rpmRaw & 0xFF;
-    const rpmHigh = (rpmRaw >> 8) & 0xFF;
-    const speedByte = speed & 0xFF;
-    const tempByte = (temp + 40) & 0xFF;
-    const throttleByte = Math.round(throttle / 0.392) & 0xFF;
-    const loadByte = Math.round(load / 0.392) & 0xFF;
-
-    const dataBytes = [rpmLow, rpmHigh, speedByte, tempByte, throttleByte, loadByte, 0x00, 0x00];
-    const dataHex = dataBytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    const message = getMessage(arbitrationId);
+    const payload = message ? generateMockPayload(message) : null;
 
     const frame: CanFrame = {
       id: `frame-${++frameIdCounter}`,
       timestamp: Date.now(),
-      arbitrationId: arbId,
-      dlc: 8,
-      data: dataHex,
-      decoded: {},
-      direction: Math.random() > 0.3 ? 'RX' : 'TX'
+      arbitrationId,
+      dlc: payload?.dlc ?? 8,
+      data: payload?.data ?? '00 00 00 00 00 00 00 00',
+      decoded: payload?.decoded ?? {},
+      direction: Math.random() > 1 - catalog.rxProbability ? 'RX' : 'TX'
     };
-
-    if (msgDef) {
-      frame.decoded = {
-        EngineRPM: rpm,
-        VehicleSpeed: speed,
-        CoolantTemp: temp,
-        ThrottlePosition: throttle,
-        EngineLoad: load
-      };
-    }
 
     return frame;
   }

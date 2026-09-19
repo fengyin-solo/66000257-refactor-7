@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useCanBusStore } from '../store/canbus';
+import { getSignal } from '../../../shared/catalog';
+import { rangePercent } from '../../../shared/signal-codec';
 
 const store = useCanBusStore();
 const selectedFrameId = ref<string | null>(null);
@@ -23,39 +25,19 @@ function formatHexId(id: number): string {
   return '0x' + id.toString(16).toUpperCase().padStart(3, '0');
 }
 
+// 量程、单位、颜色全部查唯一定义 shared/signals.json，不再按名称写死。
 function getSignalPercent(name: string, value: number): number {
-  const ranges: Record<string, { min: number; max: number }> = {
-    EngineRPM: { min: 0, max: 16383 },
-    VehicleSpeed: { min: 0, max: 255 },
-    CoolantTemp: { min: -40, max: 215 },
-    ThrottlePosition: { min: 0, max: 100 },
-    EngineLoad: { min: 0, max: 100 }
-  };
-  const range = ranges[name];
-  if (!range) return 50;
-  return Math.max(0, Math.min(100, ((value - range.min) / (range.max - range.min)) * 100));
+  const signal = getSignal(name);
+  if (!signal) return 50;
+  return rangePercent(signal, value);
 }
 
 function getSignalColor(name: string): string {
-  const colors: Record<string, string> = {
-    EngineRPM: 'bg-blue-500',
-    VehicleSpeed: 'bg-green-500',
-    CoolantTemp: 'bg-red-500',
-    ThrottlePosition: 'bg-yellow-500',
-    EngineLoad: 'bg-purple-500'
-  };
-  return colors[name] || 'bg-cyan-500';
+  return getSignal(name)?.color ?? '#06b6d4';
 }
 
 function getSignalUnit(name: string): string {
-  const units: Record<string, string> = {
-    EngineRPM: 'rpm',
-    VehicleSpeed: 'km/h',
-    CoolantTemp: '°C',
-    ThrottlePosition: '%',
-    EngineLoad: '%'
-  };
-  return units[name] || '';
+  return getSignal(name)?.displayUnit ?? '';
 }
 </script>
 
@@ -169,8 +151,7 @@ function getSignalUnit(name: string): string {
           <div class="w-full bg-gray-700 rounded-full h-2">
             <div
               class="h-2 rounded-full transition-all duration-300"
-              :class="getSignalColor(String(name))"
-              :style="{ width: getSignalPercent(String(name), value as number) + '%' }"
+              :style="{ width: getSignalPercent(String(name), value as number) + '%', backgroundColor: getSignalColor(String(name)) }"
             ></div>
           </div>
         </div>

@@ -10,6 +10,7 @@ import {
   LegendComponent
 } from 'echarts/components';
 import { useCanBusStore } from '../store/canbus';
+import { getSignal } from '../../../shared/catalog';
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
@@ -19,14 +20,14 @@ const chartRef = ref<InstanceType<typeof VChart> | null>(null);
 const chartOption = computed(() => {
   const signalEntries = Array.from(store.signals.entries());
 
-  const colors = ['#06b6d4', '#22c55e', '#ef4444', '#eab308', '#a855f7'];
+  const fallbackColors = ['#06b6d4', '#22c55e', '#ef4444', '#eab308', '#a855f7'];
   const series = signalEntries.map(([name, sig], idx) => ({
     name,
     type: 'line' as const,
     smooth: true,
     symbol: 'none',
     lineStyle: { width: 2 },
-    itemStyle: { color: colors[idx % colors.length] },
+    itemStyle: { color: getSignal(name)?.chartColor ?? fallbackColors[idx % fallbackColors.length] },
     data: sig.data.map(d => [d.time, d.value])
   }));
 

@@ -38,6 +38,22 @@
     </dependencies>
 
     <build>
+        <resources>
+            <!-- 默认资源（application.properties 等） -->
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!--
+                前后端共用的唯一定义：直接引用工作区根下的 shared/signals.json，
+                不在后端再复制一份；构建时原样放到 classpath 根（/signals.json）。
+            -->
+            <resource>
+                <directory>../shared</directory>
+                <includes>
+                    <include>signals.json</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
