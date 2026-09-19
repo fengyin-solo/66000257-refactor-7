@@ -38,6 +38,15 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- 前后端唯一的信号定义载体：仓库根目录/shared/can-signals.json -->
+            <resource>
+                <directory>../shared</directory>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

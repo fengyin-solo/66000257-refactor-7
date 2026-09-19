@@ -1,0 +1,69 @@
+{
+  "signals": [
+    {
+      "name": "EngineRPM",
+      "startBit": 0,
+      "bitLength": 16,
+      "factor": 0.25,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 16383.75,
+      "unit": "rpm",
+      "mock": { "min": 800, "max": 6000 },
+      "encodeRound": "round"
+    },
+    {
+      "name": "VehicleSpeed",
+      "startBit": 16,
+      "bitLength": 8,
+      "factor": 1,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 255,
+      "unit": "km/h",
+      "mock": { "min": 0, "max": 120 },
+      "encodeRound": "truncate"
+    },
+    {
+      "name": "CoolantTemp",
+      "startBit": 24,
+      "bitLength": 8,
+      "factor": 1,
+      "offset": -40,
+      "minValue": -40,
+      "maxValue": 215,
+      "unit": "°C",
+      "mock": { "min": 70, "max": 105 },
+      "encodeRound": "truncate"
+    },
+    {
+      "name": "ThrottlePosition",
+      "startBit": 32,
+      "bitLength": 8,
+      "factor": 0.392,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 100,
+      "unit": "%",
+      "mock": { "min": 0, "max": 100 },
+      "encodeRound": "round"
+    },
+    {
+      "name": "EngineLoad",
+      "startBit": 40,
+      "bitLength": 8,
+      "factor": 0.392,
+      "offset": 0,
+      "minValue": 0,
+      "maxValue": 100,
+      "unit": "%",
+      "mock": { "min": 0, "max": 100 },
+      "encodeRound": "round"
+    }
+  ],
+  "messages": [
+    { "id": 2015, "name": "OBD_Request", "dlc": 8, "sender": "ECU", "receiver": "Dashboard", "signals": ["EngineRPM", "VehicleSpeed", "CoolantTemp", "ThrottlePosition", "EngineLoad"] },
+    { "id": 2024, "name": "OBD_Response_Engine", "dlc": 8, "sender": "ECU", "receiver": "Dashboard", "signals": ["EngineRPM", "VehicleSpeed", "CoolantTemp", "ThrottlePosition", "EngineLoad"] },
+    { "id": 2025, "name": "OBD_Response_Transmission", "dlc": 8, "sender": "ECU", "receiver": "Dashboard", "signals": ["EngineRPM", "VehicleSpeed", "CoolantTemp", "ThrottlePosition", "EngineLoad"] }
+  ]
+}

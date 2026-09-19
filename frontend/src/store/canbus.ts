@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { CanFrame, DbcMessage, BusStats } from '../types';
-import { parseDbc, decodeCanFrame, DEFAULT_DBC_CONTENT } from '../utils/dbc-parser';
+import { parseDbc } from '../utils/dbc-parser';
+import { buildMessageMap, decodeFrameBytes, generateMockPayload } from '../shared/signal-engine';
 
 let frameIdCounter = 0;
 
@@ -63,10 +64,10 @@ export const useCanBusStore = defineStore('canbus', () => {
     else busStats.value.txCount++;
     busStats.value.lastUpdate = Date.now();
 
-    // Update signal history
+    // Update signal history（有 DBC 定义时用共享引擎重新解码）
     const msgDef = dbcMessages.value.get(frame.arbitrationId);
     if (msgDef) {
-      const decoded = decodeCanFrame(frame, msgDef);
+      const decoded = decodeFrameBytes(frame, msgDef);
       frame.decoded = decoded;
       for (const [name, value] of Object.entries(decoded)) {
         if (!signals.value.has(name)) {
@@ -99,7 +100,8 @@ export const useCanBusStore = defineStore('canbus', () => {
   }
 
   function loadMockDbc() {
-    parseAndLoadDbc(DEFAULT_DBC_CONTENT);
+    // 默认 DBC 直接由共享定义构建（与解析 DEFAULT_DBC_CONTENT 等价）
+    dbcMessages.value = buildMessageMap();
   }
 
   function parseAndLoadDbc(text: string) {
@@ -114,43 +116,22 @@ export const useCanBusStore = defineStore('canbus', () => {
 
     const msgDef = dbcMessages.value.get(arbId);
 
-    // Generate realistic OBD-II values
-    const rpm = Math.floor(800 + Math.random() * 5200);
-    const speed = Math.floor(Math.random() * 120);
-    const temp = Math.floor(70 + Math.random() * 35);
-    const throttle = Math.floor(Math.random() * 100);
-    const load = Math.floor(Math.random() * 100);
-
-    // Encode values into bytes (simplified encoding for display)
-    const rpmRaw = Math.round(rpm / 0.25);
-    const rpmLow = rpmRaw & 0xFF;
-    const rpmHigh = (rpmRaw >> 8) & 0xFF;
-    const speedByte = speed & 0xFF;
-    const tempByte = (temp + 40) & 0xFF;
-    const throttleByte = Math.round(throttle / 0.392) & 0xFF;
-    const loadByte = Math.round(load / 0.392) & 0xFF;
-
-    const dataBytes = [rpmLow, rpmHigh, speedByte, tempByte, throttleByte, loadByte, 0x00, 0x00];
-    const dataHex = dataBytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    // 物理值采样、字节编码、解码全部由共享引擎完成；
+    // 前端历史写法的物理值粒度为整数（与后端 double 版各自保留原样）
+    const payload = generateMockPayload(8, Math.random, Math.floor);
 
     const frame: CanFrame = {
       id: `frame-${++frameIdCounter}`,
       timestamp: Date.now(),
       arbitrationId: arbId,
       dlc: 8,
-      data: dataHex,
+      data: payload.data,
       decoded: {},
       direction: Math.random() > 0.3 ? 'RX' : 'TX'
     };
 
     if (msgDef) {
-      frame.decoded = {
-        EngineRPM: rpm,
-        VehicleSpeed: speed,
-        CoolantTemp: temp,
-        ThrottlePosition: throttle,
-        EngineLoad: load
-      };
+      frame.decoded = { ...payload.decoded };
     }
 
     return frame;
@@ -182,7 +163,7 @@ export const useCanBusStore = defineStore('canbus', () => {
   function decodeFrame(frame: CanFrame): Record<string, number> {
     const msgDef = dbcMessages.value.get(frame.arbitrationId);
     if (!msgDef) return {};
-    return decodeCanFrame(frame, msgDef);
+    return decodeFrameBytes(frame, msgDef);
   }
 
   function exportFrames(): string {

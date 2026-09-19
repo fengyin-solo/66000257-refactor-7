@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useCanBusStore } from '../store/canbus';
+import { getSignalRangePercent, getSignalUnit } from '../shared/signal-engine';
 
 const store = useCanBusStore();
 const selectedFrameId = ref<string | null>(null);
@@ -23,19 +24,12 @@ function formatHexId(id: number): string {
   return '0x' + id.toString(16).toUpperCase().padStart(3, '0');
 }
 
+// 量程与单位取自共享定义 (can-signals.json)，不再按信号名写死
 function getSignalPercent(name: string, value: number): number {
-  const ranges: Record<string, { min: number; max: number }> = {
-    EngineRPM: { min: 0, max: 16383 },
-    VehicleSpeed: { min: 0, max: 255 },
-    CoolantTemp: { min: -40, max: 215 },
-    ThrottlePosition: { min: 0, max: 100 },
-    EngineLoad: { min: 0, max: 100 }
-  };
-  const range = ranges[name];
-  if (!range) return 50;
-  return Math.max(0, Math.min(100, ((value - range.min) / (range.max - range.min)) * 100));
+  return getSignalRangePercent(name, value);
 }
 
+// 仅配色属于展示层偏好，新增信号回落为青色
 function getSignalColor(name: string): string {
   const colors: Record<string, string> = {
     EngineRPM: 'bg-blue-500',
@@ -45,17 +39,6 @@ function getSignalColor(name: string): string {
     EngineLoad: 'bg-purple-500'
   };
   return colors[name] || 'bg-cyan-500';
-}
-
-function getSignalUnit(name: string): string {
-  const units: Record<string, string> = {
-    EngineRPM: 'rpm',
-    VehicleSpeed: 'km/h',
-    CoolantTemp: '°C',
-    ThrottlePosition: '%',
-    EngineLoad: '%'
-  };
-  return units[name] || '';
 }
 </script>
 

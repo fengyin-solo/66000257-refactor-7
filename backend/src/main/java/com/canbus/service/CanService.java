@@ -1,19 +1,31 @@
 package com.canbus.service;
 
 import com.canbus.model.CanFrame;
+import com.canbus.signal.CanSignalEngine;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class CanService {
 
     private static final int[] MESSAGE_IDS = {0x7DF, 0x7E8, 0x7E9, 0x7EA, 0x7EB};
+    private static final int DLC = 8;
+
+    private static final Pattern BO_PATTERN =
+            Pattern.compile("^BO_\\s+(\\d+)\\s+(\\w+)\\s*:\\s*(\\d+)\\s+(\\w+)");
+    private static final Pattern SG_PATTERN = Pattern.compile(
+            "^SG_\\s+(\\w+)\\s*:\\s*(\\d+)\\|(\\d+)@([01])([+-])\\s*\\(([^,]+),([^)]+)\\)\\s*\\[([^|]+)\\|([^\\]]+)\\]\\s*\"([^\"]*)\"");
+
+    private final CanSignalEngine engine = CanSignalEngine.getInstance();
     private final Random random = new Random();
     private int frameCounter = 0;
 
     /**
-     * Generate 20 mock OBD-II CAN frames with realistic values
+     * Generate 20 mock OBD-II CAN frames with realistic values.
+     * 物理值区间、位布局、取整方式全部来自共享定义 can-signals.json。
      */
     public List<CanFrame> generateMockFrames() {
         List<CanFrame> frames = new ArrayList<>();
@@ -26,29 +38,11 @@ public class CanService {
     private CanFrame generateSingleFrame() {
         int arbId = MESSAGE_IDS[random.nextInt(MESSAGE_IDS.length)];
 
-        double rpm = 800 + random.nextDouble() * 5200;
-        double speed = random.nextDouble() * 120;
-        double temp = 70 + random.nextDouble() * 35;
-        double throttle = random.nextDouble() * 100;
-        double load = random.nextDouble() * 100;
+        // 与前端共用同一引擎；后端历史写法物理值保留两位小数
+        CanSignalEngine.MockPayload payload = engine.generateMockPayload(
+                DLC, random::nextDouble, v -> Math.round(v * 100.0) / 100.0);
 
-        int rpmRaw = (int) Math.round(rpm / 0.25);
-        int rpmLow = rpmRaw & 0xFF;
-        int rpmHigh = (rpmRaw >> 8) & 0xFF;
-        int speedByte = ((int) speed) & 0xFF;
-        int tempByte = ((int) temp + 40) & 0xFF;
-        int throttleByte = ((int) Math.round(throttle / 0.392)) & 0xFF;
-        int loadByte = ((int) Math.round(load / 0.392)) & 0xFF;
-
-        String data = String.format("%02X %02X %02X %02X %02X %02X 00 00",
-                rpmLow, rpmHigh, speedByte, tempByte, throttleByte, loadByte);
-
-        Map<String, Double> decoded = new LinkedHashMap<>();
-        decoded.put("EngineRPM", Math.round(rpm * 100.0) / 100.0);
-        decoded.put("VehicleSpeed", Math.round(speed * 100.0) / 100.0);
-        decoded.put("CoolantTemp", Math.round(temp * 100.0) / 100.0);
-        decoded.put("ThrottlePosition", Math.round(throttle * 100.0) / 100.0);
-        decoded.put("EngineLoad", Math.round(load * 100.0) / 100.0);
+        Map<String, Double> decoded = new LinkedHashMap<>(payload.getDecoded());
 
         String direction = random.nextDouble() > 0.3 ? "RX" : "TX";
 
@@ -56,49 +50,56 @@ public class CanService {
                 "frame-" + (++frameCounter),
                 System.currentTimeMillis(),
                 arbId,
-                8,
-                data,
+                DLC,
+                payload.getData(),
                 decoded,
                 direction
         );
     }
 
     /**
-     * Parse DBC text and return message definitions
+     * Parse DBC text and return message definitions.
+     * 返回结构与历史接口一致（messages + messageCount），解析规则与前端 parseDbc 对齐。
      */
     public Map<String, Object> parseDbc(String text) {
         Map<String, Object> result = new LinkedHashMap<>();
         List<Map<String, Object>> messages = new ArrayList<>();
 
-        String[] lines = text.split("\n");
         Map<String, Object> currentMsg = null;
         List<Map<String, Object>> signals = null;
 
-        for (String line : lines) {
-            String trimmed = line.trim();
+        for (String rawLine : text.split("\n")) {
+            String line = rawLine.trim();
 
-            if (trimmed.matches("^BO_\\s+\\d+.*")) {
-                String[] parts = trimmed.split("\\s+");
-                if (parts.length >= 4) {
-                    currentMsg = new LinkedHashMap<>();
-                    currentMsg.put("id", Integer.parseInt(parts[1]));
-                    String nameDlc = parts[2];
-                    String name = nameDlc.endsWith(":") ? nameDlc.substring(0, nameDlc.length() - 1) : nameDlc;
-                    currentMsg.put("name", name);
-                    currentMsg.put("dlc", Integer.parseInt(parts[3]));
-                    currentMsg.put("sender", parts.length > 4 ? parts[4] : "Unknown");
-                    signals = new ArrayList<>();
-                    currentMsg.put("signals", signals);
-                    messages.add(currentMsg);
-                }
-            } else if (trimmed.matches("^SG_\\s+.*") && signals != null) {
+            Matcher boMatcher = BO_PATTERN.matcher(line);
+            if (boMatcher.find()) {
+                currentMsg = new LinkedHashMap<>();
+                currentMsg.put("id", Integer.parseInt(boMatcher.group(1)));
+                currentMsg.put("name", boMatcher.group(2));
+                currentMsg.put("dlc", Integer.parseInt(boMatcher.group(3)));
+                currentMsg.put("sender", boMatcher.group(4));
+                signals = new ArrayList<>();
+                currentMsg.put("signals", signals);
+                messages.add(currentMsg);
+                continue;
+            }
+
+            Matcher sgMatcher = SG_PATTERN.matcher(line);
+            if (sgMatcher.find() && signals != null) {
                 Map<String, Object> sig = new LinkedHashMap<>();
-                String[] parts = trimmed.split("\\s+");
-                if (parts.length >= 2) {
-                    sig.put("name", parts[1]);
-                    signals.add(sig);
-                }
-            } else if (trimmed.isEmpty()) {
+                sig.put("name", sgMatcher.group(1));
+                sig.put("startBit", Integer.parseInt(sgMatcher.group(2)));
+                sig.put("bitLength", Integer.parseInt(sgMatcher.group(3)));
+                sig.put("factor", Double.parseDouble(sgMatcher.group(6)));
+                sig.put("offset", Double.parseDouble(sgMatcher.group(7)));
+                sig.put("minValue", Double.parseDouble(sgMatcher.group(8)));
+                sig.put("maxValue", Double.parseDouble(sgMatcher.group(9)));
+                sig.put("unit", sgMatcher.group(10));
+                signals.add(sig);
+                continue;
+            }
+
+            if (line.isEmpty()) {
                 currentMsg = null;
                 signals = null;
             }
@@ -110,10 +111,14 @@ public class CanService {
     }
 
     /**
-     * Decode a frame using signal definitions (simplified)
+     * Decode a frame using the shared signal definitions.
+     * 造帧结果原样携带解码值；无解码值（外部帧）时按共享定义解析数据域。
      */
     public Map<String, Double> decodeFrame(CanFrame frame) {
-        return frame.getDecoded() != null ? frame.getDecoded() : new LinkedHashMap<>();
+        if (frame.getDecoded() != null) {
+            return frame.getDecoded();
+        }
+        return engine.decodeFrameBytes(frame.getArbitrationId(), frame.getData());
     }
 
     /**
